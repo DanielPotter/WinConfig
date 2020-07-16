@@ -276,7 +276,6 @@ $packageManagers = @{
             param ($webClient)
             Write-Verbose "Installing Chocolatey"
             Invoke-Expression ($webClient.DownloadString('https://chocolatey.org/install.ps1'))
-            # $env:Path += ";$env:ALLUSERSPROFILE\chocolatey\bin"
         }
         InstallPackage    = {
             param ($package)
@@ -493,6 +492,7 @@ $applications | ForEach-Object {
             return
         }
 
+        Write-Host "Installing $appId"
         $installCode = & $packageManagers.$managerName.InstallPackage $package
 
         switch ($installCode)
