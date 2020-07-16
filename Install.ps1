@@ -233,7 +233,7 @@ $packageManagers = @{
             Add-AppxPackage -Path $appInstallerPath
         }
         InstallPackage    = {
-            param ($package)
+            param ($package, $installCode)
 
             $arguments = @(
                 'install'
@@ -255,12 +255,14 @@ $packageManagers = @{
             {
                 0
                 {
-                    return [InstallCode]::Success
+                    $installCode.Value = [InstallCode]::Success
+                    break
                 }
                 Default
                 {
                     # An error occurred.
-                    return [InstallCode]::Failure
+                    $installCode.Value = [InstallCode]::Failure
+                    break
                 }
             }
         }
@@ -278,7 +280,7 @@ $packageManagers = @{
             Invoke-Expression ($webClient.DownloadString('https://chocolatey.org/install.ps1'))
         }
         InstallPackage    = {
-            param ($package)
+            param ($package, $installCode)
 
             $arguments = @(
                 'install'
@@ -299,35 +301,41 @@ $packageManagers = @{
             {
                 0
                 {
-                    return [InstallCode]::Success
+                    $installCode.Value = [InstallCode]::Success
+                    break
                 }
                 350
                 {
                     # Pending reboot detected, no action has occurred.
                     Write-Warning "A reboot is pending. Please execute this script again to install."
                     return [InstallCode]::Skipped
+                    break
                 }
                 1604
                 {
                     # Install suspended, incomplete.
                     Write-Warning "The install has been canceled."
-                    return [InstallCode]::Skipped
+                    $installCode.Value = [InstallCode]::Skipped
+                    break
                 }
                 1641
                 {
                     # Success, reboot initiated.
                     Write-Warning "A reboot has been initiated. Please execute this script again to continue."
-                    return [InstallCode]::SuccessAbort
+                    $installCode.Value = [InstallCode]::SuccessAbort
+                    break
                 }
                 3010
                 {
                     # Success, reboot required.
-                    return [InstallCode]::Success
+                    $installCode.Value = [InstallCode]::Success
+                    break
                 }
                 Default
                 {
                     # An error has occurred.
-                    return [InstallCode]::Failure
+                    $installCode.Value = [InstallCode]::Failure
+                    break
                 }
             }
         }
@@ -343,13 +351,13 @@ $packageManagers = @{
             param ($webClient)
         }
         InstallPackage    = {
-            param ($package)
+            param ($package, $installCode)
 
             Start-Process "ms-windows-store://pdp/?ProductId=$($package.MicrosoftStore.Id)"
             Write-Host "Please install the app from the store before continuing."
             Pause
 
-            return [InstallCode]::Success
+            $installCode.Value = [InstallCode]::Success
         }
     }
 }
@@ -493,9 +501,10 @@ $applications | ForEach-Object {
         }
 
         Write-Host "Installing $appId"
-        $installCode = & $packageManagers.$managerName.InstallPackage $package
+        [ref] $installCode = [InstallCode]::Failure
+        & $packageManagers.$managerName.InstallPackage $package $installCode
 
-        switch ($installCode)
+        switch ($installCode.Value)
         {
             Success
             {
