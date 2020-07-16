@@ -416,7 +416,7 @@ $packageManagers = @{
 
             # This install is manual because it is very difficult and fragile to automate
             # app installation from the Microsoft Store.
-            Start-Process "ms-windows-store://pdp/?ProductId=$($package.MicrosoftStore.Id)"
+            Start-Process "ms-windows-store://pdp/?ProductId=$($package.Sources.MicrosoftStore.Id)"
             Write-Host "Please install the app from the store before continuing."
             Pause
 
