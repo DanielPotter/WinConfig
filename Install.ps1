@@ -538,6 +538,12 @@ $packages | ForEach-Object {
         return
     }
 
+    if ($false -eq $package.Enabled)
+    {
+        Write-Verbose "Skipping $packageId because it is disabled."
+        return
+    }
+
     if ($installedPackages.ContainsKey($packageId))
     {
         Write-Verbose "Skipping $packageId because it has already been installed."
