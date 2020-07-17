@@ -1,0 +1,141 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "WinConfig configuration schema",
+    "definitions": {
+        "RootObject": {
+            "type": "object",
+            "properties": {
+                "sourcePreference": {
+                    "description": "The package sources from which to download specified packages.",
+                    "type": "array",
+                    "uniqueItems": true,
+                    "items": {
+                        "type": "string",
+                        "enum": [
+                            "MicrosoftStore",
+                            "Choco",
+                            "WinGet"
+                        ]
+                    }
+                },
+                "packageSets": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/PackageSet"
+                    }
+                },
+                "packages": {
+                    "description": "Packages that may be installed.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/PackageDefinition"
+                    }
+                }
+            }
+        },
+        "PackageDefinition": {
+            "description": "Defines how to install a particular package.",
+            "type": "object",
+            "required": [
+                "packageId",
+                "sources"
+            ],
+            "allOf": [
+                {
+                    "properties": {
+                        "packageId": {
+                            "description": "An identifier for this package used when installing package sets.",
+                            "$ref": "#/definitions/PackageIdentifier"
+                        },
+                        "description": {
+                            "description": "A description of the package",
+                            "type": "string"
+                        },
+                        "sources": {
+                            "description": "Package sources from which this package may be installed.",
+                            "type": "object",
+                            "minProperties": 1,
+                            "additionalProperties": false,
+                            "properties": {
+                                "Choco": {
+                                    "$ref": "#/definitions/PackageSourceDefinition"
+                                },
+                                "MicrosoftStore": {
+                                    "$ref": "#/definitions/PackageSourceDefinition"
+                                },
+                                "WinGet": {
+                                    "$ref": "#/definitions/PackageSourceDefinition"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "$ref": "#/definitions/PackageInstallSettings"
+                }
+            ]
+        },
+        "PackageSourceDefinition": {
+            "description": "Specifies how to download and install the package from this source.",
+            "type": "object",
+            "required": [
+                "id"
+            ],
+            "allOf": [
+                {
+                    "properties": {
+                        "id": {
+                            "description": "The identifier of the package as defined by this package source.",
+                            "type": "string"
+                        }
+                    }
+                },
+                {
+                    "$ref": "#/definitions/PackageInstallSettings"
+                }
+            ]
+        },
+        "PackageInstallSettings": {
+            "properties": {
+                "parameters": {
+                    "description": "Parameters to pass to the installer.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "PackageSet": {
+            "description": "A set of packages to be installed together.",
+            "type": "object",
+            "properties": {
+                "name": {
+                    "description": "The name of this set.",
+                    "$ref": "#/definitions/PackageSetIdentifier"
+                },
+                "description": {
+                    "description": "A description of this set.",
+                    "type": "string"
+                },
+                "packages": {
+                    "description": "The packages to install in this set.",
+                    "type": "array",
+                    "items": {
+                        "uniqueItems": true,
+                        "$ref": "#/definitions/PackageIdentifier"
+                    }
+                }
+            }
+        },
+        "PackageIdentifier": {
+            "description": "A package identifer.",
+            "type": "string"
+        },
+        "PackageSetIdentifier": {
+            "description": "A package set identifer.",
+            "type": "string"
+        }
+    },
+    "$ref": "#/definitions/RootObject"
+}
