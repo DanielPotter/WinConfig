@@ -2,7 +2,8 @@
     "$schema": "./Configuration.Schema.json",
     "sourcePreference": [
         "MicrosoftStore",
-        "Choco"
+        "Choco",
+        "Git"
     ],
     "packageSets": [
         {
@@ -13,7 +14,8 @@
                 "Microsoft.VisualStudioCode",
                 "QL-Win.QuickLook",
                 "RykenStudio.MyTubeBeta",
-                "File-New-Project.EarTrumpet"
+                "File-New-Project.EarTrumpet",
+                "DanielPotter.DynamicPSProfile"
             ]
         },
         {
@@ -403,6 +405,27 @@
                 },
                 "WinGet": {
                     "id": "flux.flux"
+                }
+            }
+        },
+        {
+            "packageId": "UnityTechnologies.UnityHub",
+            "description": "The Unity Hub is a management tool that you can use to manage all of your Unity Projects and installations. Use the Hub to manage multiple installations of the Unity Editor along with their associated components, create new Projects, and open existing Projects.",
+            "sources": {
+                "Choco": {
+                    "id": "unity-hub"
+                },
+                "WinGet": {
+                    "id": "UnityTechnologies.UnityHub"
+                }
+            }
+        },
+        {
+            "packageId": "DanielPotter.DynamicPSProfile",
+            "sources": {
+                "Git": {
+                    "id": "https://github.com/DanielPotter/DynamicPSProfile.git",
+                    "destination": "${HOME}/Documents/Source/PowerShell/DynamicPSProfile"
                 }
             }
         }

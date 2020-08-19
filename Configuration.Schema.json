@@ -14,6 +14,7 @@
                         "enum": [
                             "MicrosoftStore",
                             "Choco",
+                            "Git",
                             "WinGet"
                         ]
                     }
@@ -63,6 +64,9 @@
                                 "MicrosoftStore": {
                                     "$ref": "#/definitions/PackageSourceDefinition"
                                 },
+                                "Git": {
+                                    "$ref": "#/definitions/GitPackageSourceDefinition"
+                                },
                                 "WinGet": {
                                     "$ref": "#/definitions/PackageSourceDefinition"
                                 }
@@ -75,14 +79,31 @@
                 }
             ]
         },
+        "GitPackageSourceDefinition": {
+            "allOf": [
+                {
+                    "description": "Specifies how to download and install the a repository using Git.\nUsing this source implicitly includes the Git package.",
+                    "properties": {
+                        "destination": {
+                            "description": "The directory into which to clone the repository. This path should include the repository.",
+                            "type": "string",
+                            "default": "${HOME}/src/<repository>"
+                        }
+                    }
+                },
+                {
+                    "$ref": "#/definitions/PackageSourceDefinition"
+                }
+            ]
+        },
         "PackageSourceDefinition": {
-            "description": "Specifies how to download and install the package from this source.",
             "type": "object",
             "required": [
                 "id"
             ],
             "allOf": [
                 {
+                    "description": "Specifies how to download and install the package from this source.",
                     "properties": {
                         "id": {
                             "description": "The identifier of the package as defined by this package source.",

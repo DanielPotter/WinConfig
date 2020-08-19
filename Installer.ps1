@@ -40,6 +40,7 @@ switch ($configUri.Scheme)
             Write-Error "Failed to read configuration."
             return
         }
+        break
     }
     { $_ -in "http", "https" }
     {
@@ -50,6 +51,7 @@ switch ($configUri.Scheme)
             Write-Error "Failed to download configuration."
             return
         }
+        break
     }
     Default
     {
@@ -64,37 +66,6 @@ if (-not $configuration)
 {
     Write-Error "Failed to parse configuration."
     return
-}
-
-#endregion
-
-#region Collect Packages
-
-$packages = $(
-    # Concatenate the explicit packages with the packages from the specified sets.
-
-    $PackageId
-
-    $PackageSet | Select-Object -Unique | ForEach-Object {
-        $setName = $_
-        $set = $configuration.packageSets | Where-Object name -EQ $setName | Select-Object -First 1
-        if (-not $set)
-        {
-            Write-Warning "A package set with the name '$setName' could not be found in the configuration."
-            return
-        }
-
-        return $set
-    } | Select-Object -ExpandProperty packages
-) | Select-Object -Unique | ForEach-Object {
-    $packageIdentifier = $_
-    $package = $configuration.packages | Where-Object packageId -EQ $packageIdentifier
-    if (-not $package)
-    {
-        Write-Warning "A package identified by '$packageIdentifier' could not be found in the configuration."
-    }
-
-    return $package
 }
 
 #endregion
@@ -138,7 +109,7 @@ $packageManagers = @(
                 $arguments += "`"$($package.Parameters)`""
             }
 
-            Write-Debug "Invoke: choco $arguments"
+            Write-Debug "$($package.PackageId): Invoke: choco $arguments"
             choco @arguments
 
             # Exit code reference: https://chocolatey.org/docs/commands-install#exit-codes
@@ -152,34 +123,114 @@ $packageManagers = @(
                 350
                 {
                     # Pending reboot detected, no action has occurred.
-                    Write-Warning "A reboot is pending. Please execute this script again to install."
-                    return [InstallerExitCode]::Skipped
+                    Write-Warning "$($package.PackageId): A reboot is pending. Please execute this script again to install."
+                    $installerExitCode.Value = [InstallerExitCode]::Skipped
                     break
                 }
                 1604
                 {
                     # Install suspended, incomplete.
-                    Write-Warning "The install has been canceled."
+                    Write-Warning "$($package.PackageId): The install has been canceled."
                     $installerExitCode.Value = [InstallerExitCode]::Skipped
                     break
                 }
                 1641
                 {
                     # Success, reboot initiated.
-                    Write-Warning "A reboot has been initiated. Please execute this script again to continue."
+                    Write-Warning "$($package.PackageId): A reboot has been initiated. Please execute this script again to continue."
                     $installerExitCode.Value = [InstallerExitCode]::SuccessAbort
                     break
                 }
                 3010
                 {
                     # Success, reboot required.
-                    Write-Warning "A reboot is required to use the applicate."
+                    Write-Warning "$($package.PackageId): A reboot is required to use the applicate."
                     $installerExitCode.Value = [InstallerExitCode]::Success
                     break
                 }
                 Default
                 {
                     # An error has occurred.
+                    $installerExitCode.Value = [InstallerExitCode]::Failure
+                    break
+                }
+            }
+        }
+    }
+    @{
+        Id = "Git"
+        Name = "Git"
+        RequiresWebClient = $false
+        RequiredPackages = @(
+            "Git.Git"
+        )
+        CheckManagerInstalled = {
+            # Git is considered to be installed if git.exe is on the path.
+            return Get-Command git -ErrorAction SilentlyContinue
+        }
+        InstallManager = {
+            param ($webClient)
+            Write-Error "Git should be installed using another package manager."
+        }
+        InstallPackage = {
+            param ($package, $installerExitCode)
+
+            $arguments = @(
+                'clone'
+            )
+
+            if ($package.Parameters)
+            {
+                $arguments += $package.Parameters
+            }
+
+            # Resolve variables in the destination path.
+            $destination = $package.Sources.Git.Destination
+            if (-not $destination)
+            {
+                Write-Error "$($package.PackageId): No destination was provided."
+                $installerExitCode.Value = [InstallerExitCode]::Failure
+                return
+            }
+
+            $destination = $destination -replace '\${HOME}', $HOME
+
+            # Resolve the path.  This will convert it to an absolute path even if it doesn't exist.
+            $absoluteDestination = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($destination)
+            if (-not $absoluteDestination)
+            {
+                Write-Error "$($package.PackageId): Failed to resolve the destination to an absolute path: $destination."
+                $installerExitCode.Value = [InstallerExitCode]::Failure
+                return
+            }
+
+            $destinationDirectory = Split-Path $absoluteDestination
+
+            $arguments += @(
+                '--'
+                $package.Sources.Git.Id
+                $absoluteDestination
+            )
+
+            # Ensure the destination directory exists.
+            if (-not (Test-Path $destinationDirectory))
+            {
+                New-Item $destinationDirectory -ItemType Directory | Out-Null
+            }
+
+            Write-Debug "$($package.PackageId): Invoke: git $arguments"
+            git @arguments
+
+            switch ($LASTEXITCODE)
+            {
+                0
+                {
+                    $installerExitCode.Value = [InstallerExitCode]::Success
+                    break
+                }
+                Default
+                {
+                    # An error has occurred.  Output from Git has already passed through to the console.
                     $installerExitCode.Value = [InstallerExitCode]::Failure
                     break
                 }
@@ -214,7 +265,7 @@ $packageManagers = @(
         Name                  = "WinGet"
         RequiresWebClient     = $true
         CheckManagerInstalled = {
-            # WinGet is considered to be installed if choco.exe is on the path.
+            # WinGet is considered to be installed if winget.exe is on the path.
             return Get-Command winget -ErrorAction SilentlyContinue
         }
         InstallManager        = {
@@ -243,7 +294,7 @@ $packageManagers = @(
                 $arguments += "`"$($package.Parameters)`""
             }
 
-            Write-Debug "Invoke: winget $arguments"
+            Write-Debug "$($package.PackageId): Invoke: winget $arguments"
             winget @arguments
 
             switch ($LASTEXITCODE)
@@ -264,88 +315,356 @@ $packageManagers = @(
     }
 )
 
-#endregion
+function isPermittedPackageManager ($id)
+{
+    if ($configuration.sourcePreference)
+    {
+        return $id -in $configuration.sourcePreference
+    }
 
-#region Install Package Managers
+    return $true
+}
 
-# Gather the package managers that host the desired packages.
-$configuredSourceNames = $packages | ForEach-Object {
-    $_.sources | Get-Member -MemberType NoteProperty
-} | Select-Object -ExpandProperty Name -Unique
-
-# Get the package managers that are both defined and desired.
-$allowedPackageManagers = $(
+function selectPermittedPackageManager ([string[]] $id)
+{
     if ($configuration.sourcePreference)
     {
         # If preferences are specified, select only the package managers that we actually need.
-        $configuration.sourcePreference | Where-Object {
-            $_ -in $configuredSourceNames
+        return $configuration.sourcePreference | Where-Object {
+            $_ -in $id
         }
     }
     else
     {
-        # Otherwise, use all package managers we need.
-        $configuredSourceNames
+        # Otherwise, use all package managers.
+        return $id
     }
-) | ForEach-Object {
-    $managerId = $_
-
-    # Find the package manager by ID.
-    $packageManager = $packageManagers | Where-Object Id -EQ $managerId
-    if (-not $packageManager)
-    {
-        Write-Warning "A package manager identified as '$managerId' is not defined."
-        return
-    }
-
-    return $packageManager
 }
 
-if (-not $allowedPackageManagers)
+function getPackageManager ($id)
 {
-    Write-Error "None of the selected packages can be installed from the preferred sources."
-    return
+    return $packageManagers | Where-Object Id -EQ $id
 }
 
-# Install each package manager if not already installed.
-$allowedPackageManagers | ForEach-Object {
-    $packageManager = $_
+function installPackageManager
+{
+    param (
+        [Parameter(
+            Position = 0,
+            ValueFromPipeline
+        )]
+        [object]
+        $PackageManager
+    )
 
-    if ($packageManager.IsInstalled)
+    if ($PackageManager.IsInstalled)
     {
         return
     }
 
-    if (& $packageManager.CheckManagerInstalled)
+    if (Invoke-Command -ScriptBlock $PackageManager.CheckManagerInstalled)
     {
-        Write-Verbose "Skipping installation of $($packageManager.Name) because it is already installed."
-        $packageManager.IsInstalled = $true
+        Write-Verbose "Skipping installation of $($PackageManager.Name) because it is already installed."
+        $PackageManager.IsInstalled = $true
         return
     }
 
-    Write-Verbose "Istalling package manager: $($packageManager.Name)"
+    Write-Verbose "Istalling package manager: $($PackageManager.Name)"
 
-    if ($packageManager.RequiresWebClient -and -not $webClient.Value)
+    if ($PackageManager.RequiresWebClient -and -not $webClient.Value)
     {
         $webClient.Value = New-Object Net.WebClient
     }
 
-    & $packageManager.InstallManager $webClient.Value
+    Invoke-Command -ScriptBlock $PackageManager.InstallManager -ArgumentList $webClient.Value
 
     # Reload the path variable in case the package manager was not added to the path of the current session.
     # We use the path to determine whether the manager is installed.
     # Reference: https://stackoverflow.com/questions/17794507/reload-the-path-in-powershell
     $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
 
-    $packageManager.IsInstalled = [bool] (& $packageManager.CheckManagerInstalled)
+    $PackageManager.IsInstalled = [bool] (Invoke-Command -ScriptBlock $PackageManager.CheckManagerInstalled)
 
-    if (-not $packageManager.IsInstalled)
+    if (-not $PackageManager.IsInstalled)
     {
-        Write-Error "Failed to install package manager: $($packageManager.Name)"
+        Write-Error "Failed to install package manager: $($PackageManager.Name)"
     }
 }
 
-$enabledPackageManagers = $allowedPackageManagers | Where-Object IsInstalled -EQ $true
+#endregion
+
+#region Collect Packages
+
+function getPackage
+{
+    param (
+        [Parameter(
+            Position = 0,
+            ValueFromPipeline
+        )]
+        [string[]]
+        $Identifier
+    )
+
+    process
+    {
+        if (-not $Identifier)
+        {
+            return
+        }
+
+        $Identifier | ForEach-Object {
+            $packageIdentifier = $_
+            $package = $configuration.packages | Where-Object packageId -EQ $packageIdentifier
+            if (-not $package)
+            {
+                Write-Warning "A package identified by '$packageIdentifier' could not be found in the configuration."
+            }
+        
+            return $package
+        }
+    }
+}
+
+$desiredPackageIdentifiers = $(
+    # Concatenate the explicit packages with the packages from the specified sets.
+
+    $PackageId
+
+    $PackageSet | Select-Object -Unique | ForEach-Object {
+        $setName = $_
+        $set = $configuration.packageSets | Where-Object name -EQ $setName | Select-Object -First 1
+        if (-not $set)
+        {
+            Write-Warning "A package set with the name '$setName' could not be found in the configuration."
+            return
+        }
+
+        return $set
+    } | Select-Object -ExpandProperty packages
+) | Select-Object -Unique
+
+$desiredPackages = getPackage $desiredPackageIdentifiers
+
+function installPackage
+{
+    param (
+        [Parameter(
+            Position = 0,
+            ValueFromPipeline
+        )]
+        [object]
+        $Package,
+
+        [Parameter()]
+        [string[]]
+        $PackageManager,
+
+        [Parameter()]
+        [ref]
+        $Success,
+
+        [Parameter()]
+        [ref]
+        $Abort
+    )
+
+    process
+    {
+        $packageIdentifier = $Package.packageId
+
+        if ($installedPackages.ContainsKey($packageIdentifier))
+        {
+            Write-Verbose "Skipping $packageIdentifier because it has already been installed."
+            return
+        }
+
+        $PackageManager | ForEach-Object {
+            if ($Success.Value)
+            {
+                # We already successfully installed this package.
+                return
+            }
+
+            $managerId = $_
+            $manager = getPackageManager -id $managerId
+
+            $packageManager = $Package.sources.$managerId
+            if (-not $packageManager)
+            {
+                # This package cannot be installed with this package manager.
+                return
+            }
+
+            Write-Host "Installing $packageIdentifier"
+            [ref] $installerExitCode = [InstallerExitCode]::Failure
+            Invoke-Command $manager.InstallPackage -ArgumentList $Package, $installerExitCode
+
+            switch ($installerExitCode.Value)
+            {
+                Success
+                {
+                    $Success.Value = $true
+                    return
+                }
+                SuccessAbort
+                {
+                    $Success.Value = $true
+                    $Abort.Value = $true
+                    return
+                }
+                FailureAbort
+                {
+                    $Abort.Value = $true
+                    break
+                }
+            }
+        }
+    }
+}
+
+#endregion
+
+#region Build Installation Queue
+
+# Using the desired packages, determine which package managers we need to make sure are installed.
+# We want to ensure they are installed first if not already.
+# If any package manager depends on a package from another,
+# we need to install the package after its source manager but before its dependent manager.
+
+# The queue contains the identifiers of the containers to install
+# in the order in which we need to install them.
+$installQueue = [System.Collections.ArrayList]::new()
+$installContainers = @{}
+
+$checkedManagers = [System.Collections.ArrayList]::new()
+$enabledPackageManagers = [System.Collections.ArrayList]::new()
+
+function enqueuePackage
+{
+    param (
+        [Parameter(
+            Position = 0,
+            ValueFromPipeline
+        )]
+        [object]
+        $Package
+    )
+
+    $packageIdentifier = $Package.packageId
+
+    # If this package was already added to queue skip it.
+    # This can happen if this package is a dependency of an earlier package or manager.
+    if ($packageIdentifier -in $installQueue)
+    {
+        return $true
+    }
+
+    $sourceNames = $Package.sources | Get-Member -MemberType NoteProperty | Select-Object -ExpandProperty Name
+
+    # Add required package managers.
+    $canBeInstalled = [ref] $false
+    $sourceNames | ForEach-Object {
+        $managerId = $_
+
+        if ($managerId -in $installQueue)
+        {
+            $canBeInstalled.Value = $true
+            return
+        }
+
+        if (-not (isPermittedPackageManager -id $managerId))
+        {
+            return
+        }
+
+        if ($managerId -notin $checkedManagers)
+        {
+            # Mark this manager as checked so we don't warn about undefined managers more than once.
+            [void] $checkedManagers.Add($managerId)
+
+            $packageManager = getPackageManager -id $managerId
+            if (-not $packageManager)
+            {
+                Write-Warning "A package manager identified as '$managerId' is not defined."
+                return
+            }
+
+            if ($packageManager.RequiredPackages)
+            {
+                $allRequirementsEnqueued = [ref] $true
+                $packageManager.RequiredPackages | ForEach-Object {
+                    $requiredPackageId = $_
+                    if ($requiredPackageId)
+                    {
+                        $requiredPackage = getPackage $requiredPackageId
+                        if ($requiredPackage)
+                        {
+                            # TODO: Only enqueue if all required packages can be added. (Daniel Potter, 2020/08/19)
+                            if (-not (enqueuePackage $requiredPackage))
+                            {
+                                $allRequirementsEnqueued.Value = $false
+                            }
+                        }
+                    }
+                }
+
+                if (-not $allRequirementsEnqueued.Value)
+                {
+                    # Abort enqueuing this manager.
+                    Write-Warning "$($packageIdentifier): Cannot install source package manager ($($packageManager.Name)) because it has a missing dependency."
+                    return
+                }
+            }
+
+            [void] $installQueue.Add($managerId)
+            $installContainers[$managerId] = @{
+                Id      = $managerId
+                Manager = $packageManager
+                Install = {
+                    param ($self, $success, $abort)
+                    installPackageManager $self.Manager
+                    if ($self.Manager.IsInstalled)
+                    {
+                        $success.Value = $true
+                    }
+                    else
+                    {
+                        $abort.Value = $true
+                    }
+                }
+            }
+
+            [void] $enabledPackageManagers.Add($managerId)
+            $canBeInstalled.Value = $true
+        }
+    }
+
+    if (-not $canBeInstalled.Value)
+    {
+        Write-Warning "$($packageIdentifier): Skipping package because it has no accessible package managers."
+        return $false
+    }
+
+    [void] $installQueue.Add($packageIdentifier)
+    $installContainers[$packageIdentifier] = @{
+        Id = $packageIdentifier
+        Package = $Package
+        Install = {
+            param ($self, $success, $abort)
+            # $preferredPackageManagers will be available by the time this script block executes.
+            installPackage -Package $self.Package -PackageManager $preferredPackageManagers -Success $success -Abort $abort
+        }
+    }
+
+    return $true
+}
+
+$desiredPackages | ForEach-Object {
+    enqueuePackage $_ | Out-Null
+}
+
+$preferredPackageManagers = selectPermittedPackageManager $enabledPackageManagers
 
 #endregion
 
@@ -383,83 +702,49 @@ $installProgress.Packages | ForEach-Object {
 
 #endregion
 
-#region Install Packages
+#region Install from Queue
 
 [ref] $abort = $false
 
-$packages | ForEach-Object {
+$installQueue | ForEach-Object {
     if ($abort.Value)
     {
         return
     }
 
-    $package = $_
+    $installIdentifier = $_
+    $container = $installContainers[$_]
 
-    $packageIdentifier = $package.packageId
-
-    if ($installedPackages.ContainsKey($packageIdentifier))
+    if (-not $container)
     {
-        Write-Verbose "Skipping $packageIdentifier because it has already been installed."
+        Write-Error "Unknown install container: $installIdentifier"
+        return
+    }
+
+    if ($installedPackages.ContainsKey($installIdentifier))
+    {
+        Write-Verbose "Skipping $installIdentifier because it has already been installed."
         return
     }
 
     [ref] $success = $false
 
-    $enabledPackageManagers | ForEach-Object {
-        if ($success.Value)
-        {
-            # We already successfully installed this package.
-            return
-        }
-
-        $managerId = $_.Id
-
-        $packageManager = $package.sources.$managerId
-        if (-not $packageManager)
-        {
-            # This package cannot be installed with this package manager.
-            return
-        }
-
-        Write-Host "Installing $packageIdentifier"
-        [ref] $installerExitCode = [InstallerExitCode]::Failure
-        & $packageManager.InstallPackage $package $installerExitCode
-
-        switch ($installerExitCode.Value)
-        {
-            Success
-            {
-                $success.Value = $true
-                return
-            }
-            SuccessAbort
-            {
-                $success.Value = $true
-                $abort.Value = $true
-                return
-            }
-            FailureAbort
-            {
-                $abort.Value = $true
-                break
-            }
-        }
-    }
+    Invoke-Command -ScriptBlock $container.Install -ArgumentList $container, $success, $abort
 
     if ($success.Value)
     {
         $installedPackage = [PSCustomObject] @{
-            Id = $packageIdentifier
+            Id = $installIdentifier
         }
 
         $installProgress.Packages += $installedPackage
-        $installedPackages[$packageIdentifier] = $installedPackage
+        $installedPackages[$installIdentifier] = $installedPackage
 
         $installProgress | ConvertTo-Json | Set-Content $installationProgressPath
     }
     else
     {
-        Write-Error "Failed to install package: $packageIdentifier"
+        Write-Error "Failed to install package: $installIdentifier"
     }
 }
 
