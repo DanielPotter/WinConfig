@@ -17,54 +17,172 @@ param (
         Mandatory
     )]
     [Alias("Config")]
-    [string]
+    [string[]]
     $ConfigurationPath
 )
 
 [ref] $webClient = $null
 
-#region Configuration
+#region Configuration Classes
 
-# Get the content of the configuration file that defines the packages.
-
-# Parse the path so that we know whether it refers to web content or a file on disk.
-$configUri = [uri] $ConfigurationPath
-
-switch ($configUri.Scheme)
+class Configuration
 {
-    file
+    [string[]] $SourcePreference
+    [PackageSet[]] $PackageSets
+    [PackageDefinition[]] $Packages
+
+    [void] Add([Configuration] $other)
     {
-        $configContent = Get-Content $ConfigurationPath
-        if (-not $configContent)
-        {
-            Write-Error "Failed to read configuration."
-            return
+        $this.SourcePreference = $this.SourcePreference, $other.SourcePreference | Select-Object -Unique
+
+        $setsToMerge = [System.Collections.ArrayList]::new($other.PackageSets)
+        $this.PackageSets | ForEach-Object {
+            $currentSet = $_
+            for ($index = 0; $index -lt $setsToMerge.Count; $index++)
+            {
+                $otherSet = $setsToMerge[$index]
+                if ($otherSet.name -eq $currentSet.name)
+                {
+                    $currentSet.Add($otherSet)
+                    $setsToMerge.RemoveAt($index)
+                    break
+                }
+            }
         }
-        break
-    }
-    { $_ -in "http", "https" }
-    {
-        $webClient.Value = New-Object Net.WebClient
-        $configContent = $webClient.Value.DownloadString($ConfigurationPath)
-        if (-not $configContent)
+
+        if ($setsToMerge.Count)
         {
-            Write-Error "Failed to download configuration."
-            return
+            $this.PackageSets += $setsToMerge
         }
-        break
-    }
-    Default
-    {
-        Write-Error "Malformed uri: $ConfigurationPath"
-        return
+
+        $packagesToMerge = [System.Collections.ArrayList]::new($other.Packages)
+        $this.Packages | ForEach-Object {
+            $currentPackage = $_
+            for ($index = 0; $index -lt $packagesToMerge.Count; $index++)
+            {
+                $otherPackage = $packagesToMerge[$index]
+                if ($otherPackage.name -eq $currentPackage.name)
+                {
+                    $currentPackage.Add($otherPackage)
+                    $packagesToMerge.RemoveAt($index)
+                    break
+                }
+            }
+        }
+
+        if ($packagesToMerge.Count)
+        {
+            $this.Packages += $packagesToMerge
+        }
     }
 }
 
-$configuration = $configContent | ConvertFrom-Json
-
-if (-not $configuration)
+class PackageSet
 {
-    Write-Error "Failed to parse configuration."
+    [string] $Name
+    [string] $Description
+    [string[]] $Packages
+
+    [void] Add([PackageSet] $other)
+    {
+        if (-not $this.Description)
+        {
+            $this.Description = $other.Description
+        }
+
+        $this.Packages = $this.Packages, $other.Packages | Select-Object -Unique
+    }
+}
+
+class PackageDefinition : PackageInstallSettings
+{
+    [string] $PackageId
+    [string] $Description
+    [PackageSourceDefinition[]] $Sources
+
+    [void] Add([PackageDefinition] $other)
+    {
+        ([PackageInstallSettings] $this).Add($other)
+
+        $this.Sources = $this.Sources, $other.Sources | Select-Object -Unique
+    }
+}
+
+class PackageInstallSettings
+{
+    [string[]] $Parameters
+
+    [void] Add([PackageInstallSettings] $other)
+    {
+        $this.Parameters = $this.Parameters, $other.Parameters | Select-Object -Unique
+    }
+}
+
+class PackageSourceDefinition : PackageInstallSettings
+{
+    [string] $Id
+}
+
+class GitPackageSourceDefinition : PackageSourceDefinition
+{
+    [string] $Destination
+}
+
+#endregion
+
+#region Configuration
+
+# Get the content of the configuration files that define the packages.
+$configuration = [Configuration]::new()
+
+# Parse the path so that we know whether it refers to web content or a file on disk.
+$ConfigurationPath | ForEach-Object {
+    $configPath = $_
+    $configUri = [uri] $configPath
+
+    switch ($configUri.Scheme)
+    {
+        file
+        {
+            $configContent = Get-Content $configPath
+            if (-not $configContent)
+            {
+                Write-Error "Failed to read configuration from $configPath."
+                return
+            }
+            break
+        }
+        { $_ -in "http", "https" }
+        {
+            $webClient.Value = New-Object Net.WebClient
+            $configContent = $webClient.Value.DownloadString($configPath)
+            if (-not $configContent)
+            {
+                Write-Error "Failed to download configuration from $configPath."
+                return
+            }
+            break
+        }
+        Default
+        {
+            Write-Error "Malformed uri: $configPath"
+            return
+        }
+    }
+
+    [Configuration] $newConfiguration = $configContent | ConvertFrom-Json
+    if (-not $newConfiguration)
+    {
+        Write-Error "Failed to parse configuration from $configPath."
+        return
+    }
+
+    $configuration.Add($newConfiguration)
+}
+
+if (-not $configuration.Packages)
+{
+    Write-Error "Failed to parse packages from configuration."
     return
 }
 
