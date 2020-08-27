@@ -363,12 +363,63 @@
         },
         {
             "packageId": "DanielPotter.DynamicPSProfile",
+            "description": "A PowerShell profile template that simplifies profile management.",
             "sources": {
                 "Git": {
                     "id": "https://github.com/DanielPotter/DynamicPSProfile.git",
                     "destination": "${HOME}/Documents/Source/PowerShell/DynamicPSProfile"
                 }
             }
+        },
+        {
+            "packageId": "dlwyatt.PreferenceVariables",
+            "description": "The Get-CallerPreference function allows functions in Script Modules to behave according to preference variables (such as $ErrorActionPreference) set in their caller's scope, even when that scope is not Global.",
+            "sources": {
+                "PSModule": {
+                    "id": "PreferenceVariables"
+                }
+            }
+        }
+    ],
+    "changes": [
+        {
+            "id": "AdvancedExplorerOptions",
+            "description": "Sets various advanced explorer options such as showing hidden files.",
+            "provider": "Registry",
+            "requiresShellRestart": true,
+            "properties": {
+                "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced": {
+                    "AutoCheckSelect": 1,
+                    "Hidden": 1,
+                    "HideFileExt": 0,
+                    "SeparateProcess": 1
+                }
+            }
+        },
+        {
+            "id": "UseDarkTheme",
+            "description": "Sets Windows to use the dark color theme.",
+            "provider": "Registry",
+            "properties": {
+                "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize": {
+                    "AppsUseLightTheme": 0,
+                    "SystemUsesLightTheme": 0
+                }
+            }
+        },
+        {
+            "id": "RemoteExecutionPolicy",
+            "description": "Sets PowerShell's execution policy to RemoteSigned.",
+            "provider": "PowerShell",
+            "script": "Set-ExecutionPolicy RemoteSigned",
+            "requiresAdmin": true
+        },
+        {
+            "id": "TrustPSGallery",
+            "description": "Marks the PowerShell Gallery as a trusted package repository.",
+            "provider": "PowerShell",
+            "script": "Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201; Set-PSRepository -Name PSGallery -InstallationPolicy Trusted",
+            "requiresAdmin": true
         }
     ]
 }
