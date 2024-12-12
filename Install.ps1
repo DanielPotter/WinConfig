@@ -6,17 +6,26 @@ param (
     [string] $ConfigurationPath
 )
 
-$configurationPath = "Example.jsonc"
+$exampleConfigurationPath = "Example.jsonc"
 $installerPath = "Installer.ps1"
 $gitHubPath = "https://raw.githubusercontent.com/DanielPotter/WinConfig/master"
 
-$fullConfigPath = if ($ConfigurationPath) {
+$fullConfigPath = if ($ConfigurationPath)
+{
     $ConfigurationPath -replace '''', '`'''
-} else { "$gitHubPath/$configurationPath" }
+}
+elseif ($PSScriptRoot)
+{
+    "$PSScriptRoot\$exampleConfigurationPath"
+}
+else
+{
+    "$gitHubPath/$exampleConfigurationPath"
+}
 
 if ($PSScriptRoot)
 {
-    & "$PSScriptRoot\$installerPath" -PackageSet $packageSets -ConfigurationPath $PSScriptRoot\$configurationPath
+    & "$PSScriptRoot\$installerPath" -ConfigurationPath $fullConfigPath
 }
 else
 {
