@@ -1,15 +1,18 @@
 [CmdletBinding()]
-param ()
+param (
+    # The path to the install configuration.
+    [Parameter()]
+    [Alias("Config")]
+    [string] $ConfigurationPath
+)
 
-$configurationPath = "Configuration.json"
+$configurationPath = "Example.jsonc"
 $installerPath = "Installer.ps1"
 $gitHubPath = "https://raw.githubusercontent.com/DanielPotter/WinConfig/master"
-$packageSets = @(
-    "common"
-    "development"
-    "games"
-    "utilities"
-)
+
+$fullConfigPath = if ($ConfigurationPath) {
+    $ConfigurationPath -replace '''', '`'''
+} else { "$gitHubPath/$configurationPath" }
 
 if ($PSScriptRoot)
 {
@@ -19,5 +22,5 @@ else
 {
     $webClient = New-Object System.Net.WebClient
     $installer = $webClient.DownloadString("$gitHubPath/$installerPath")
-    Invoke-Expression "& { $installer } -PackageSet $($packageSets -join ', ') -ConfigurationPath '$gitHubPath/$configurationPath'"
+    Invoke-Expression "& { $installer } -ConfigurationPath '$fullConfigPath'"
 }

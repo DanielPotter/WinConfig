@@ -1,0 +1,44 @@
+{
+    "$schema": "https://raw.githubusercontent.com/DanielPotter/WinConfig/master/Configuration.v2.Schema.json",
+    "packages": {
+        // Software Development
+        "Microsoft.PowerShell": "WinGet",
+        "Microsoft.VisualStudioCode": {
+            "source": "WinGet",
+            "parameters": [
+                "/NoDesktopIcon",
+                "/NoQuicklaunchIcon"
+            ]
+        },
+        "Git.Git": {
+            "source": "WinGet",
+            "parameters": [
+                "/GitOnlyOnPath",
+                "/NoShellIntegration"
+            ]
+        },
+        "GitExtensionsTeam.GitExtensions": "WinGet",
+        // Game Launchers
+        "Valve.Steam": "WinGet",
+        "EpicGames.EpicGamesLauncher": "WinGet",
+        // Utilities
+        "File-New-Project.EarTrumpet": "WinGet",
+        "voidtools.Everything": {
+            "source": "WinGet",
+            "parameters": [
+                "/client-service",
+                "/run-on-system-startup",
+                "/start-menu-shortcuts"
+            ]
+        },
+        "QL-Win.QuickLook": "WinGet",
+        "flux.flux": "WinGet",
+        "Audacity.Audacity": "WinGet",
+        // Repositories
+        "https://github.com/DanielPotter/DynamicPSProfile.git": {
+            "source": "Git",
+            "name": "DynamicPSProfile",
+            "destination": "${HOME}/Documents/Source/PowerShell/DynamicPSProfile"
+        }
+    }
+}
