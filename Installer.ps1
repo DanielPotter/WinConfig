@@ -465,10 +465,17 @@ $configuration.packages.psobject.Properties | ForEach-Object {
     $package = [ordered] @{
         packageId = $_.Name
     }
-    $_.Value.psobject.Properties | ForEach-Object {
-        $package[$_.Name] = $_.Value
+    if ($_.Value -is [string])
+    {
+        $package.source = $_.Value
     }
-    $packagesToInstall[$package.packageId] = $package
+    else
+    {
+        $_.Value.psobject.Properties | ForEach-Object {
+            $package[$_.Name] = $_.Value
+        }
+    }
+    $packagesToInstall[$package.packageId] = [PSCustomObject] $package
 }
 
 function getPackage
