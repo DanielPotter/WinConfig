@@ -283,7 +283,7 @@ $packageManagers = @(
 
             # This install is manual because it is very difficult and fragile to automate
             # app installation from the Microsoft Store.
-            Start-Process "ms-windows-store://pdp/?ProductId=$($package.Sources.MicrosoftStore.Id)"
+            Start-Process "ms-windows-store://pdp/?ProductId=$($package.PackageId)"
             Write-Host "Please install the app from the store before continuing."
             Pause
 
@@ -373,7 +373,7 @@ $packageManagers = @(
             $arguments = @(
                 'install'
                 '--id'
-                $package.Sources.WinGet.Id
+                $package.PackageId
                 '--exact'
             )
 
