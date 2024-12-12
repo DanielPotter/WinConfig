@@ -21,7 +21,7 @@ switch ($configUri.Scheme)
 {
     file
     {
-        $configContent = Get-Content $ConfigurationPath
+        $configContent = Get-Content $ConfigurationPath -Raw
         if (-not $configContent)
         {
             Write-Error "Failed to read configuration."
