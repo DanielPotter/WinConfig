@@ -468,7 +468,7 @@ $configuration.packages.psobject.Properties | ForEach-Object {
     $_.Value.psobject.Properties | ForEach-Object {
         $package[$_.Name] = $_.Value
     }
-    return $package
+    $packagesToInstall[$package.packageId] = $package
 }
 
 function getPackage
@@ -491,7 +491,7 @@ function getPackage
 
         $Identifier | ForEach-Object {
             $packageIdentifier = $_
-            $package = $packagesToInstall | Where-Object packageId -EQ $packageIdentifier
+            $package = $packagesToInstall[$packageIdentifier]
             if (-not $package)
             {
                 Write-Warning "A package identified by '$packageIdentifier' could not be found in the configuration."
@@ -502,7 +502,7 @@ function getPackage
     }
 }
 
-$desiredPackages = $packagesToInstall
+$desiredPackages = $packagesToInstall.Values
 
 function installPackage
 {
